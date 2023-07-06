@@ -8,7 +8,7 @@ To use this script, follow these steps:
 
 1. Clone the Repo:
 ```
-git clone https://github.com/flexcomng/erpnext_quick_install.git
+git clone https://github.com/medicall-org/erpnext_quick_install.git
 ```
 2. navigate to the folder:
 ```
