@@ -253,7 +253,7 @@ sleep 2
 if [ -z "$py_version" ] || [ "$py_major" -lt 3 ] || [ "$py_major" -eq 3 -a "$py_minor" -lt 10 ]; then
     python3.10 -m venv $USER && \
     source $USER/bin/activate
-    nvm use 16
+    nvm use 18
 fi
 
 #Install bench
