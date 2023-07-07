@@ -242,7 +242,7 @@ echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This
 # Source .profile to load the new environment variables in the current session
 source ~/.profile
 
-nvm install 16
+nvm install 18
 
 sudo apt-get -qq install npm -y
 sudo npm install -g yarn
