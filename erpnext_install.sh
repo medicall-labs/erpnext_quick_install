@@ -242,7 +242,7 @@ echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This
 # Source .profile to load the new environment variables in the current session
 source ~/.profile
 
-nvm install 18
+nvm install 16
 
 sudo apt-get -qq install npm -y
 sudo npm install -g yarn
@@ -253,7 +253,7 @@ sleep 2
 if [ -z "$py_version" ] || [ "$py_major" -lt 3 ] || [ "$py_major" -eq 3 -a "$py_minor" -lt 10 ]; then
     python3.10 -m venv $USER && \
     source $USER/bin/activate
-    nvm use 18
+    nvm use 16
 fi
 
 #Install bench
@@ -264,7 +264,7 @@ sudo pip3 install frappe-bench
 #Initiate bench in frappe-bench folder, but get a supervisor can't restart bench error...
 echo -e "${YELLOW}Initialising bench in frappe-bench folder.${NC}" 
 echo -e "${LIGHT_BLUE}If you get a restart failed, don't worry, we will resolve that later.${NC}"
-bench init frappe-bench --version version-13 --verbose --install-app erpnext --version version-13
+bench init frappe-bench --version version-14 --verbose --install-app erpnext --version version-14
 echo -e "${GREEN}Bench installation complete!${NC}"
 sleep 1
 
