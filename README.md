@@ -22,6 +22,14 @@ sudo chmod +x erpnext_install.sh
 ```
 source erpnext_install.sh
 ```
+5. Go to your frappe-bench directory:
+```
+bench get-app healthcare
+```
+6. Install Healthcare App to Site:
+```
+bench --site [your-site-name] install-app healthcare
+```
 # Compatibility
 
 Ubuntu 22.04 LTS,
