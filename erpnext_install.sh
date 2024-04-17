@@ -107,23 +107,72 @@ ask_twice() {
         fi
     done
 }
-echo -e "\n"
 echo -e "${LIGHT_BLUE}Welcome to the ERPNext Installer...${NC}"
 echo -e "\n"
 sleep 3
 
+# Prompt user for version selection with a preliminary message
+echo -e "${YELLOW}Please enter the number of the corresponding ERPNext version you wish to install:${NC}"
+
+versions=("Version 13" "Version 14" "Version 15")
+select version_choice in "${versions[@]}"; do
+    case $REPLY in
+        1) bench_version="version-13"; break;;
+        2) bench_version="version-14"; break;;
+        3) bench_version="version-15"; break;;
+        *) echo -e "${RED}Invalid option. Please select a valid version.${NC}";;
+    esac
+done
+
+# Confirm the version choice with the user
+echo -e "${GREEN}You have selected $version_choice for installation.${NC}"
+echo -e "${LIGHT_BLUE}Do you wish to continue? (yes/no)${NC}"
+read -p "Response: " continue_install
+continue_install=$(echo "$continue_install" | tr '[:upper:]' '[:lower:]')
+
+while [[ "$continue_install" != "yes" && "$continue_install" != "y" && "$continue_install" != "no" && "$continue_install" != "n" ]]; do
+    echo -e "${RED}Invalid response. Please answer with 'yes' or 'no'.${NC}"
+    echo -e "${LIGHT_BLUE}Do you wish to continue with the installation of $version_choice? (yes/no)${NC}"
+    read -p "Response: " continue_install
+    continue_install=$(echo "$continue_install" | tr '[:upper:]' '[:lower:]')
+done
+
+if [[ "$continue_install" == "no" || "$continue_install" == "n" ]]; then
+    # If user chooses 'no', loop back to version selection
+    continue
+else
+    echo -e "${GREEN}Proceeding with the installation of $version_choice.${NC}"
+
+fi
+sleep 2
+
+# Check OS compatibility for Version 15
+if [[ "$bench_version" == "version-15" ]]; then
+    if [[ "$(lsb_release -si)" != "Ubuntu" ]]; then
+        echo -e "${RED}Your Distro is not supported for Version 15.${NC}"
+        exit 1
+    elif [[ "$(lsb_release -rs)" < "22.04" ]]; then
+        echo -e "${RED}Your Ubuntu version is below the minimum version required to support Version 15.${NC}"
+        exit 1
+    fi
+fi
+
+# Check OS and version compatibility for all versions
+check_os
 #First Let's take you home
 cd $(sudo -u $USER echo $HOME)
 
 #Next let's set some important parameters.
 #We will need your required SQL root passwords
-echo -e "${YELLOW}First let's set some important parameters...${NC}"
+echo -e "${YELLOW}Now let's set some important parameters...${NC}"
 sleep 1
 echo -e "${YELLOW}We will need your required SQL root password${NC}"
 sleep 1
 sqlpasswrd=$(ask_twice "What is your required SQL root password" "true")
 sleep 1
 echo -e "\n"
+check_os
+
 
 #Now let's make sure your instance has the most updated packages
 echo -e "${YELLOW}Updating system packages...${NC}"
@@ -242,7 +291,14 @@ echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This
 # Source .profile to load the new environment variables in the current session
 source ~/.profile
 
-nvm install 16
+# Conditional Node.js installation based on the version of ERPNext selected
+if [[ "$bench_version" == "version-15" ]]; then
+    nvm install 18
+    node_version="18"
+else
+    nvm install 16
+    node_version="16"
+fi
 
 sudo apt-get -qq install npm -y
 sudo npm install -g yarn
@@ -253,7 +309,7 @@ sleep 2
 if [ -z "$py_version" ] || [ "$py_major" -lt 3 ] || [ "$py_major" -eq 3 -a "$py_minor" -lt 10 ]; then
     python3.10 -m venv $USER && \
     source $USER/bin/activate
-    nvm use 16
+    nvm use $node_version
 fi
 
 #Install bench
@@ -264,7 +320,7 @@ sudo pip3 install frappe-bench
 #Initiate bench in frappe-bench folder, but get a supervisor can't restart bench error...
 echo -e "${YELLOW}Initialising bench in frappe-bench folder.${NC}" 
 echo -e "${LIGHT_BLUE}If you get a restart failed, don't worry, we will resolve that later.${NC}"
-bench init frappe-bench --version version-14 --verbose --install-app erpnext --version version-14
+bench init frappe-bench --version $bench_version --verbose --install-app erpnext --version $bench_version
 echo -e "${GREEN}Bench installation complete!${NC}"
 sleep 1
 
@@ -275,44 +331,14 @@ sleep 1
 adminpasswrd=$(ask_twice "Enter the Administrator password" "true")
 echo -e "\n"
 sleep 2
-# Install expect tool only if needed
-echo $passwrd | sudo -S apt -qq install expect -y
-
 echo -e "${YELLOW}Now setting up your site. This might take a few minutes. Please wait...${NC}"
 sleep 1
 # Change directory to frappe-bench
 cd frappe-bench && \
 
-sudo sed -i '/port 6379/a port 11000' /etc/redis/redis.conf
-sudo service redis-server restart
+sudo chmod -R o+rx /home/$(echo $USER)
 
-
-# Create new site using expect
-export SITE_NAME=$site_name
-export SQL_PASSWD=$sqlpasswrd
-export ADMIN_PASSWD=$adminpasswrd
-
-#Set Administrator password.
-SITE_SETUP=$(expect -c "
-set timeout 300
-set sitename \$env(SITE_NAME)
-set sqlpwd \$env(SQL_PASSWD)
-set adminpwd \$env(ADMIN_PASSWD)
-spawn bench new-site \$sitename --install-app erpnext
-expect \"MySQL root password:\"
-send \"\$sqlpwd\r\"
-expect \"Set Administrator password:\"
-sleep 20
-send \"\$adminpwd\r\"
-expect \"Re-enter Administrator password:\"
-sleep 20
-send \"\$adminpwd\r\"
-expect eof
-")
-echo "$SITE_SETUP"
-
-sudo sed -i '/port 11000/d' /etc/redis/redis.conf
-sudo service redis-server restart
+bench new-site $site_name --db-root-password $sqlpasswrd --admin-password $adminpasswrd --install-app erpnext
 
 echo -e "${LIGHT_BLUE}Would you like to continue with production install? (yes/no)${NC}"
 read -p "Response: " continue_prod
@@ -327,7 +353,21 @@ case "$continue_prod" in
     echo -e "${YELLOW}Applying necessary permissions to supervisor...${NC}"
     sleep 1
     # Change ownership of supervisord.conf
-    sudo sed -i '6i chown='"$USER"':'"$USER"'' /etc/supervisor/supervisord.conf && \
+    # Path to the supervisord.conf file
+    FILE="/etc/supervisor/supervisord.conf"
+    # Construct the search pattern with the current $USER environment variable
+    SEARCH_PATTERN="chown=$USER:$USER"
+
+    # Check if the pattern exists in the file
+    if grep -q "$SEARCH_PATTERN" "$FILE"; then
+        echo -e "${YELLOW}User ownership already exists for supervisord. Updating it...${NC}"
+        # Replace the existing line with the new user ownership line
+        sudo sed -i "/chown=.*/c $SEARCH_PATTERN" "$FILE"
+    else
+        echo -e "${YELLOW}User ownership does not exist for supervisor. Adding it...${NC}"
+        # Insert the new user ownership line at a specific line number
+        sudo sed -i "5a $SEARCH_PATTERN" "$FILE"
+    fi
 
     # Restart supervisor
     sudo service supervisor restart && \
@@ -340,12 +380,17 @@ case "$continue_prod" in
     # Enable and resume the scheduler for the site
     bench --site $site_name scheduler enable && \
     bench --site $site_name scheduler resume && \
-
+    if [[ "$bench_version" == "version-15" ]]; then
+        echo -e "${YELLOW}Setting up Socketio, Redis and Supervisor...${NC}"
+        sleep 1
+        bench setup socketio
+        yes | bench setup supervisor
+        bench setup redis
+        sudo supervisorctl reload
+    fi
     echo -e "${YELLOW}Restarting bench to apply all changes and optimizing environment pernissions.${NC}"
     sleep 1
 
-    # Restart bench
-    bench restart && \
 
     #Now to make sure the environment is fully setup
     sudo chmod 755 /home/$(echo $USER)
@@ -359,7 +404,7 @@ case "$continue_prod" in
 
     read -p "Response: " continue_ssl
 
-    continue_ssl=$(echo "$continue_ssl" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
+    continue_ssl=$(echo "$continue_ssl" | tr '[:upper:]' '[:lower:]')
 
     case "$continue_ssl" in
         "yes" | "y")
@@ -406,7 +451,7 @@ case "$continue_prod" in
     fi
 
     echo -e "${GREEN}--------------------------------------------------------------------------------"
-    echo -e "Congratulations! You have successfully installed ERPNext version 14."
+    echo -e "Congratulations! You have successfully installed ERPNext $version_choice."
     echo -e "You can start using your new ERPNext installation by visiting https://$site_name"
     echo -e "(if you have enabled SSL and used a Fully Qualified Domain Name"
     echo -e "during installation) or http://$server_ip to begin."
@@ -419,6 +464,11 @@ case "$continue_prod" in
     echo -e "${YELLOW}Getting your site ready for development...${NC}"
     sleep 2
     source ~/.profile
+    if [[ "$bench_version" == "version-15" ]]; then
+        nvm alias default 18
+    else
+        nvm alias default 16
+    fi
     nvm alias default 16
     bench use $site_name
     bench build
@@ -426,7 +476,7 @@ case "$continue_prod" in
     sleep 5
 
     echo -e "${GREEN}-----------------------------------------------------------------------------------------------"
-    echo -e "Congratulations! You have successfully installed Frappe and ERPNext version 14 Development Enviromment."
+    echo -e "Congratulations! You have successfully installed Frappe and ERPNext $version_choice Development Enviromment."
     echo -e "Start your instance by running bench start to start your server and visiting http://$server_ip:8000"
     echo -e "Install additional apps as required. Visit https://frappeframework.com for Developer Documentation."
     echo -e "Enjoy development with Frappe!"
